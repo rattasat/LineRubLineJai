@@ -1,0 +1,22 @@
+target/
+
+# Package Files #
+*.war
+*.ear
+
+# Eclipse
+.settings
+.prefs
+.project
+.metadata
+.classpath
+*.prefs
+
+# Intellij
+.idea
+*.iml
+*.iws
+*.ipr
+
+# Mac
+.DS_Store

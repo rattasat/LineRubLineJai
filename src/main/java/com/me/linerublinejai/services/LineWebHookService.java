@@ -86,6 +86,8 @@ public class LineWebHookService {
                     } catch (Exception ex) {
                         lineMessagingClient.replyMessage(new ReplyMessage(replyToken, new TextMessage(Messages.SOMETHING_WRONG)));
                     }
+                } else {
+                    lineMessagingClient.replyMessage(new ReplyMessage(replyToken, new TextMessage(Messages.SHOULD_CORRECT_MODE)));
                 }
                 break;
         }

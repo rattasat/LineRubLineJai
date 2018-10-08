@@ -3,20 +3,23 @@ package com.me.linerublinejai.services;
 import com.linecorp.bot.client.LineMessagingClient;
 import com.linecorp.bot.model.ReplyMessage;
 import com.linecorp.bot.model.action.DatetimePickerAction;
-import com.linecorp.bot.model.action.MessageAction;
-import com.linecorp.bot.model.event.FollowEvent;
-import com.linecorp.bot.model.event.MessageEvent;
-import com.linecorp.bot.model.event.message.TextMessageContent;
-import com.linecorp.bot.model.message.Message;
+import com.linecorp.bot.model.action.PostbackAction;
+import com.linecorp.bot.model.message.FlexMessage;
 import com.linecorp.bot.model.message.TextMessage;
-import com.linecorp.bot.model.message.quickreply.QuickReply;
-import com.linecorp.bot.model.message.quickreply.QuickReplyItem;
-import com.linecorp.bot.model.profile.UserProfileResponse;
-import com.linecorp.bot.model.response.BotApiResponse;
+import com.linecorp.bot.model.message.flex.component.*;
+import com.linecorp.bot.model.message.flex.container.Bubble;
+import com.linecorp.bot.model.message.flex.unit.FlexAlign;
+import com.linecorp.bot.model.message.flex.unit.FlexFontSize;
+import com.linecorp.bot.model.message.flex.unit.FlexLayout;
+import com.linecorp.bot.model.message.flex.unit.FlexMarginSize;
+import com.me.linerublinejai.models.DatePeriod;
 import com.me.linerublinejai.models.entities.Expenditure;
 import com.me.linerublinejai.models.entities.LineUser;
-import com.me.linerublinejai.models.repositories.ExpenditureRepository;
 import com.me.linerublinejai.models.repositories.LineUserRepository;
+import com.me.linerublinejai.types.ModeType;
+import com.me.linerublinejai.utils.Constants;
+import com.me.linerublinejai.utils.Message;
+import com.me.linerublinejai.utils.Mode;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -27,161 +30,296 @@ import java.util.*;
 public class LineWebHookService {
 
     @Autowired
-    private LineMessagingClient lineMessagingClient;
+    private ExpenditureService expenditureService;
 
     @Autowired
     private LineUserRepository lineUserRepository;
 
     @Autowired
-    private ExpenditureRepository expenditureRepository;
+    private LineMessagingClient lineMessagingClient;
 
-    private SimpleDateFormat justTime = new SimpleDateFormat("HH:mm");
-    private SimpleDateFormat justDate = new SimpleDateFormat("yyyy-MM-dd");
-    private SimpleDateFormat dateShow = new SimpleDateFormat("EEE, dd/MMM/yyyy");
+    private SimpleDateFormat datePattern = new SimpleDateFormat(Constants.DATE_PATTERN);
+    private SimpleDateFormat dayModeMessage = new SimpleDateFormat(Constants.DAY_MODE_PATTERN);
+    private SimpleDateFormat monthModeMessage = new SimpleDateFormat(Constants.MONTH_MODE_PATTERN);
+    private SimpleDateFormat dayOfMonthMessage = new SimpleDateFormat(Constants.DAY_OF_MONTH_PATTERN);
 
-    public void handleTextContent(MessageEvent<TextMessageContent> event) throws Exception {
-        String replyToken = event.getReplyToken();
-        String text = event.getMessage().getText();
-        String lineUserId = event.getSource().getUserId();
-        if (text.equalsIgnoreCase("-help")) {
-
-        } else if (text.matches("[0-9A-Za-zก-๙]+ /\\d+")) {
-            String activity = text.split(" /")[0];
-            Integer price =  Integer.parseInt(text.split(" /")[1]);
-            Expenditure expenditure = new Expenditure(lineUserId, activity, new Date(), price);
-            expenditureRepository.save(expenditure);
-            List<Message> messages = new ArrayList<>();
-            messages.add(new TextMessage("เพิ่มรายการนี้ไปยังรายจ่ายวันนี้ของคุณเรียบร้อยแล้ว"));
-            replyMessages(replyToken, messages);
-        } else if (text.equalsIgnoreCase("รายจ่ายวันนี้")) {
-            Date start = startDate(new Date());
-            Date finish = finishDate(new Date());
-            List<Expenditure> expenditureList = expenditureRepository.findByLineUserIdAndDateBetween(lineUserId, start, finish);
-            manageMessageDay(replyToken, expenditureList);
-        } else if (text.equalsIgnoreCase("รายจ่ายเดือนนี้")) {
-            Date start = minDateInMonth(new Date());
-            Date finish = maxDateInMonth(new Date());
-            List<Expenditure> expenditureList = expenditureRepository.findByLineUserIdAndDateBetween(lineUserId, start, finish);
-            manageMessageDay(replyToken, expenditureList);
-        } else if (text.equalsIgnoreCase("รายจ่าย")) {
-            List<QuickReplyItem> items = new ArrayList<>();
-            items.add(QuickReplyItem.builder().action(new MessageAction("รายจ่ายวันนี้",
-                    "รายจ่ายวันนี้")).build());
-            items.add(QuickReplyItem.builder().action(new MessageAction("รายจ่ายเดือนนี้",
-                    "รายจ่ายเดือนนี้")).build());
-            items.add(QuickReplyItem.builder().action(new DatetimePickerAction("รายจ่ายเฉพาะวัน",
-                    "date",
-                    "date")).build());
-            QuickReply quickReply = QuickReply.items(items);
-           replyMessages(replyToken, Collections.singletonList(TextMessage.builder().text("กรุณาเลือกช่วงเวลา").quickReply(quickReply).build()));
-        }
-    }
-
-    public void handleFollow(FollowEvent event) throws Exception {
-        String replyToken = event.getReplyToken();
-        String displayName = getProfile(event.getSource().getUserId()).getDisplayName();
-        List<Message> messages = new ArrayList<>();
-        messages.add(new TextMessage(String.format("ยินดีต้อนรับคุณ %s สู่ไลน์รับไลน์จ่าย", displayName)));
-        messages.add(new TextMessage("หากต้องการคำแนะนำในการใช้กรุณาพิมพ์ \"-help\""));
-        replyMessages(replyToken, messages);
-
-        if (!checkExits(event.getSource().getUserId())) {
-            lineUserRepository.save(new LineUser(event.getSource().getUserId()));
-        }
-    }
-
-    private void manageMessageDay(String replyToken, List<Expenditure> expenditureList) throws Exception {
-        if (expenditureList.isEmpty()) {
-            List<Message> messages = new ArrayList<>();
-            messages.add(new TextMessage("ยังไม่มีรายจ่ายในช่วงเวลาดังกล่าว"));
-            replyMessages(replyToken, messages);
-        } else {
-            Integer index = 1;
-            String firstDate = dateShow.format(expenditureList.get(0).getDate());
-            String res = String.format("%s\n", firstDate);
-            Integer sumPrice = 0;
-            for (Expenditure expenditure : expenditureList) {
-                String date = dateShow.format(expenditure.getDate());
-                if (!firstDate.equals(date)) {
-                    firstDate = date;
-                    index = 1;
-                    res = String.format("%s%s\n", res, firstDate);
+    public void textMessageEvent(String userId, String replyToken, String text) throws Exception {
+        DatePeriod datePeriod;
+        List<Expenditure> expenditureList;
+        switch (text) {
+            case Mode.BY_THIS_DAY:
+                datePeriod = new DatePeriod(new Date(), ModeType.THIS_DAY);
+                expenditureList = expenditureService.getExpenditure(userId, datePeriod.getStart(), datePeriod.getFinish());
+                if (expenditureList.isEmpty()) {
+                    lineMessagingClient.replyMessage(new ReplyMessage(replyToken, new TextMessage(Message.NOT_FOUND_EXPENDITURE)));
+                } else {
+                    lineMessagingClient.replyMessage(new ReplyMessage(replyToken, setFlexMessage(expenditureList, ModeType.THIS_DAY)));
                 }
-                String numWithAc = String.format("%d. %s", index, expenditure.getActivity());
-                String price = String.format("ราคา: %d บาท", expenditure.getPrice());
-                String time = String.format("เวลา: %s น.", justTime.format(expenditure.getDate()));
-                String line = String.format("%s\n\t- %s\n\t- %s", numWithAc, price, time);
-                sumPrice = sumPrice + expenditure.getPrice();
-                res = String.format("%s%s\n", res, line);
-                index++;
-            }
-            res = String.format("%sรวม: %d บาท",res, sumPrice);
-            List<Message> messages = new ArrayList<>();
-            messages.add(new TextMessage(res));
-            replyMessages(replyToken, messages);
+                break;
+            case Mode.BY_THIS_MONTH:
+                datePeriod = new DatePeriod(new Date(), ModeType.THIS_MONTH);
+                expenditureList = expenditureService.getExpenditure(userId, datePeriod.getStart(), datePeriod.getFinish());
+                if (expenditureList.isEmpty()) {
+                    lineMessagingClient.replyMessage(new ReplyMessage(replyToken, new TextMessage(Message.NOT_FOUND_EXPENDITURE)));
+                } else {
+                    lineMessagingClient.replyMessage(new ReplyMessage(replyToken, setFlexMessage(expenditureList, ModeType.THIS_MONTH)));
+                }
+                break;
+            case Mode.SELECT_MODE:
+                lineMessagingClient.replyMessage(new ReplyMessage(replyToken, setFlexMessageForSelectMode()));
+                break;
+            default:
+                if (text.trim().matches(Mode.REGEX_ADD)) {
+                    String activity = text.split(" /")[0];
+                    Integer price = Integer.parseInt(text.split(" /")[1]);
+                    try {
+                        expenditureService.saveExpenditure(new Expenditure(userId, activity, new Date(), price));
+                        lineMessagingClient.replyMessage(new ReplyMessage(replyToken, new TextMessage(Message.ADD_EXPENDITURE_SUCCESS)));
+                    } catch (Exception ex) {
+                        lineMessagingClient.replyMessage(new ReplyMessage(replyToken, new TextMessage(Message.SOMETHING_WRONG)));
+                    }
+                }
+                break;
         }
     }
 
-    private Date startDate(Date date) {
-        Calendar calendar = new GregorianCalendar();
-        calendar.setTime(date);
-        calendar.set(Calendar.HOUR_OF_DAY, 0);
-        calendar.set(Calendar.HOUR, 0);
-        calendar.set(Calendar.MINUTE, 0);
-        calendar.set(Calendar.SECOND, 0);
-        calendar.set(Calendar.MILLISECOND, 0);
+    public void handleFollow(String userId, String replyToken) throws Exception {
+        String displayName = lineMessagingClient.getProfile(userId).get().getDisplayName();
+        lineMessagingClient.replyMessage(new ReplyMessage(replyToken, Arrays.asList(new TextMessage(String.format(Message.WELCOME_1, displayName)), new TextMessage(String.format(Message.WELCOME_2, Mode.HELP)))));
 
-        return calendar.getTime();
-    }
-
-    private Date finishDate(Date date) {
-        Calendar calendar = new GregorianCalendar();
-        calendar.setTime(date);
-        calendar.set(Calendar.HOUR_OF_DAY, 23);
-        calendar.set(Calendar.HOUR, 11);
-        calendar.set(Calendar.MINUTE, 59);
-        calendar.set(Calendar.SECOND, 59);
-        calendar.set(Calendar.MILLISECOND, 999);
-
-        return calendar.getTime();
-    }
-
-    private Date minDateInMonth(Date date) {
-        Calendar calendar = new GregorianCalendar();
-        calendar.setTime(date);
-        calendar.set(Calendar.DATE, calendar.getActualMinimum(Calendar.DATE));
-
-        return startDate(calendar.getTime());
-    }
-
-    private Date maxDateInMonth(Date date) {
-        Calendar calendar = new GregorianCalendar();
-        calendar.setTime(date);
-        calendar.set(Calendar.DATE, calendar.getActualMaximum(Calendar.DATE));
-
-        return finishDate(calendar.getTime());
-    }
-
-    private Boolean checkExits(String lineUserId) throws Exception {
-        LineUser lineUser = lineUserRepository.findByLineUserId(lineUserId);
-        return lineUser != null;
-    }
-
-    private UserProfileResponse getProfile(String userId) throws Exception {
-        try {
-            UserProfileResponse userProfileResponse = lineMessagingClient.getProfile(userId).get();
-            return userProfileResponse;
-        } catch (Exception ex) {
-            throw ex;
+        if (lineUserRepository.findByLineUserId(userId) == null) {
+            lineUserRepository.save(new LineUser(userId));
         }
     }
 
-    private void replyMessages(String replytoken, List<Message> messages) throws Exception {
-        try {
-            BotApiResponse apiResponse = lineMessagingClient.replyMessage(new ReplyMessage(replytoken, messages)).get();
-        } catch (Exception ex) {
-            throw ex;
+    public void handlePostbackEvent(String data, Map<String, String> params, String userId, String replyToken) throws Exception {
+        DatePeriod datePeriod;
+        List<Expenditure> expenditureList;
+
+        switch (data) {
+            case Constants.DATE:
+                String date = params.get("date");
+                datePeriod = new DatePeriod(datePattern.parse(date), ModeType.THIS_DAY);
+                expenditureList = expenditureService.getExpenditure(userId, datePeriod.getStart(), datePeriod.getFinish());
+                if (expenditureList.isEmpty()) {
+                    lineMessagingClient.replyMessage(new ReplyMessage(replyToken, new TextMessage(Message.NOT_FOUND_EXPENDITURE)));
+                } else {
+                    lineMessagingClient.replyMessage(new ReplyMessage(replyToken, setFlexMessage(expenditureList, ModeType.THIS_DAY)));
+                }
+                break;
+            case Constants.MONTH:
+                lineMessagingClient.replyMessage(new ReplyMessage(replyToken, setFlexMessageMonth()));
+                break;
+            default:
+                Calendar calendar = new GregorianCalendar();
+                calendar.setTime(new Date());
+                calendar.set(Calendar.MONTH, Integer.parseInt(data));
+                datePeriod = new DatePeriod(calendar.getTime(), ModeType.THIS_MONTH);
+                expenditureList = expenditureService.getExpenditure(userId, datePeriod.getStart(), datePeriod.getFinish());
+                if (expenditureList.isEmpty()) {
+                    lineMessagingClient.replyMessage(new ReplyMessage(replyToken, new TextMessage(Message.NOT_FOUND_EXPENDITURE)));
+                } else {
+                    lineMessagingClient.replyMessage(new ReplyMessage(replyToken, setFlexMessage(expenditureList, ModeType.THIS_MONTH)));
+                }
         }
+    }
+
+    private FlexMessage setFlexMessageForSelectMode() {
+        String altText = ModeType.SELECT_MODE.getLabel();
+        List<FlexComponent> flexComponents = Arrays.asList(
+                Button
+                        .builder()
+                        .action(new DatetimePickerAction(
+                                ModeType.SELECT_DATE.getLabel(),
+                                "date",
+                                Constants.DATE,
+                                datePattern.format(new Date()),
+                                datePattern.format(new Date()),
+                                Constants.MIN_DATE
+                        ))
+                        .style(Button.ButtonStyle.PRIMARY)
+                        .build(),
+                Button
+                        .builder()
+                        .action(PostbackAction
+                                .builder()
+                                .label(ModeType.SELECT_MONTH.getLabel())
+                                .data("month")
+                                .build())
+                        .margin(FlexMarginSize.MD)
+                        .style(Button.ButtonStyle.PRIMARY)
+                        .build()
+        );
+
+        Bubble bubble = Bubble
+                .builder()
+                .body(Box
+                        .builder()
+                        .layout(FlexLayout.VERTICAL)
+                        .contents(flexComponents)
+                        .build())
+                .build();
+        return new FlexMessage(altText, bubble);
+    }
+
+    private FlexMessage setFlexMessageMonth() {
+        String altText = ModeType.SELECT_MONTH.getLabel();
+        LinkedHashMap<String, String> month = new LinkedHashMap<>();
+        month.put("มกราคม", "0");
+        month.put("กุมภาพันธ์", "1");
+        month.put("มีนาคม", "2");
+        month.put("เมษายน", "3");
+        month.put("พฤษภาคม", "4");
+        month.put("มิถุนายน", "5");
+        month.put("กรกฎาคม", "6");
+        month.put("สิงหาคม", "7");
+        month.put("กันยายน", "8");
+        month.put("ตุลาคม", "9");
+        month.put("พฤศจิกายน", "10");
+        month.put("ธันวาคม", "11");
+
+        List<FlexComponent> flexComponents = new ArrayList<>();
+
+        for (String key : month.keySet()) {
+            flexComponents.add(Button
+                    .builder()
+                    .action(PostbackAction
+                            .builder()
+                            .label(key)
+                            .data(month.get(key))
+                            .build())
+                    .margin(FlexMarginSize.SM)
+                    .style(Button.ButtonStyle.PRIMARY)
+                    .height(Button.ButtonHeight.SMALL)
+                    .build());
+        }
+
+        Bubble bubble = Bubble
+                .builder()
+                .body(Box
+                        .builder()
+                        .layout(FlexLayout.VERTICAL)
+                        .contents(flexComponents)
+                        .build())
+                .build();
+        return new FlexMessage(altText, bubble);
+    }
+
+    private FlexMessage setFlexMessage(List<Expenditure> expenditureList, ModeType mode) throws Exception {
+        String altText = Message.ALT_TEXT_EXPENDITURE;
+        String header1 = Message.EXPENDITURE;
+        String header2;
+        List<FlexComponent> flexComponents = new ArrayList<>();
+        Integer sumActivity = 0;
+        Integer sumPrice = 0;
+        switch (mode) {
+            case THIS_DAY:
+                header2 = dayModeMessage.format(expenditureList.get(0).getDate());
+                flexComponents = createHeader(header1, header2);
+                flexComponents.add(Separator.builder().margin(FlexMarginSize.MD).build());
+                for (Expenditure expenditure : expenditureList) {
+                    flexComponents.add(createBoxActivity(expenditure.getActivity(), String.format(Message.PRICE_BATH, expenditure.getPrice())));
+                    sumPrice += expenditure.getPrice();
+                    sumActivity++;
+                }
+                flexComponents.add(Separator.builder().margin(FlexMarginSize.MD).build());
+                flexComponents.add(createFooter(String.format(Message.RESULT, sumActivity), String.format(Message.PRICE_BATH, sumPrice)));
+                break;
+            case THIS_MONTH:
+                header2 = monthModeMessage.format(expenditureList.get(0).getDate());
+                flexComponents = createHeader(header1, header2);
+                flexComponents.add(Separator.builder().margin(FlexMarginSize.MD).build());
+                Date date = expenditureList.get(0).getDate();
+                String dateCompare = datePattern.format(date);
+                Integer sumAllPrice = 0;
+                for (Expenditure expenditure : expenditureList) {
+                    if (dateCompare.equals(datePattern.format(expenditure.getDate()))) {
+                        sumPrice += expenditure.getPrice();
+                    } else {
+                        flexComponents.add(createBoxActivity(String.format(Message.DAY_OF_MOTH_AT, dayOfMonthMessage.format(date)), String.format(Message.PRICE_BATH, sumPrice)));
+                        sumPrice = expenditure.getPrice();
+                        date = expenditure.getDate();
+                        dateCompare = datePattern.format(date);
+                        sumActivity++;
+                    }
+                    sumAllPrice += expenditure.getPrice();
+                }
+                flexComponents.add(createBoxActivity(String.format(Message.DAY_OF_MOTH_AT, dayOfMonthMessage.format(date)), String.format(Message.PRICE_BATH, sumPrice)));
+                flexComponents.add(Separator.builder().margin(FlexMarginSize.MD).build());
+                flexComponents.add(createFooter(String.format(Message.RESULT, sumActivity + 1), String.format(Message.PRICE_BATH, sumAllPrice)));
+                break;
+        }
+        Bubble bubble = Bubble
+                .builder()
+                .body(Box
+                        .builder()
+                        .layout(FlexLayout.VERTICAL)
+                        .contents(flexComponents)
+                        .build())
+                .build();
+        return new FlexMessage(altText, bubble);
+    }
+
+    private List<FlexComponent> createHeader(String header1, String header2) {
+        List<FlexComponent> flexComponents = new ArrayList<>();
+        flexComponents.add(Text
+                .builder()
+                .text(header1)
+                .size(FlexFontSize.LG)
+                .weight(Text.TextWeight.BOLD)
+                .color(Constants.HEADER_TEXT_COLOR)
+                .build());
+        flexComponents.add(Text
+                .builder()
+                .text(header2)
+                .size(FlexFontSize.XL)
+                .weight(Text.TextWeight.BOLD)
+                .color(Constants.HEADER_DATE_TEXT_COLOR)
+                .margin(FlexMarginSize.MD).build());
+        return flexComponents;
+    }
+
+    private Box createBoxActivity(String left, String right) {
+        Text activityText = Text
+                .builder()
+                .text(left)
+                .color(Constants.ACTIVITY_TEXT_COLOR)
+                .align(FlexAlign.START)
+                .build();
+        Text priceText = Text
+                .builder()
+                .text(right)
+                .color(Constants.PRICE_TEXT_COLOR)
+                .align(FlexAlign.END)
+                .build();
+        return Box
+                .builder()
+                .layout(FlexLayout.HORIZONTAL)
+                .margin(FlexMarginSize.MD)
+                .contents(Arrays.asList(activityText, priceText))
+                .build();
+    }
+
+    private Box createFooter(String left, String right) {
+        Text resultText = Text
+                .builder()
+                .text(left)
+                .color(Constants.FOOTER_TEXT_COLOR)
+                .align(FlexAlign.START)
+                .build();
+
+        Text sumPriceText = Text
+                .builder()
+                .text(right)
+                .color(Constants.FOOTER_TEXT_COLOR)
+                .align(FlexAlign.END)
+                .build();
+        return Box
+                .builder()
+                .layout(FlexLayout.HORIZONTAL)
+                .margin(FlexMarginSize.SM)
+                .contents(Arrays.asList(resultText, sumPriceText))
+                .build();
     }
 
 }

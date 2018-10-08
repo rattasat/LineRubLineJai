@@ -6,7 +6,7 @@
 	<groupId>com.me</groupId>
 	<artifactId>linerublinejai</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<packaging>war</packaging>
+	<packaging>jar</packaging>
 
 	<name>linerublinejai</name>
 	<description>My API For Learn About Line Messaging API</description>

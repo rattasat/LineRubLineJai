@@ -1,4 +1,5 @@
 target/
+src/main/webapp/
 
 # Package Files #
 *.war
@@ -17,7 +18,6 @@ target/
 *.iml
 *.iws
 *.ipr
-*appengine-web.xml
 
 # Mac
 .DS_Store

@@ -6,23 +6,23 @@ import org.springframework.data.annotation.Id;
 import java.util.Date;
 
 @Data
-public class Expenditure {
+public class Expenses {
     @Id
     private String id;
 
     private String lineUserId;
 
-    private String activity;
+    private String name;
 
     private Date date;
 
     private Integer price;
 
-    public Expenditure() {}
+    public Expenses() {}
 
-    public Expenditure(String lineUserId, String activity, Date date, Integer price) {
+    public Expenses(String lineUserId, String name, Date date, Integer price) {
         this.lineUserId = lineUserId;
-        this.activity = activity;
+        this.name = name;
         this.date = date;
         this.price = price;
     }

@@ -21,4 +21,8 @@ public class Messages {
     public static final String DAY_OF_MOTH_AT                   = "วันที่ %s";
     public static final String RESULT                           = "รวม %d รายการ";
 
+    // Multicast
+    public static final String ADD_EXPENSES_1PM                 = "บ่ายโมงแล้ว ให้เราช่วยจดจำการใช้จ่ายในตอนเช้าของคุณกันเถอะ ";
+    public static final String ADD_EXPENSES_8PM                 = "สองทุ่มแล้วจ้าา ตอนบ่ายใช้เงินไปกับอะไรบ้างบอกเราหน่อยเร็ว ";
+
 }

@@ -79,18 +79,7 @@ public class LineWebHookService {
                 lineMessagingClient.replyMessage(new ReplyMessage(replyToken, messages));
                 break;
             default:
-                if (text.trim().matches(Mode.REGEX_ADD)) {
-                    String activity = text.split(" /")[0];
-                    Integer price = Integer.parseInt(text.split(" /")[1]);
-                    try {
-                        expensesService.saveExpenses(new Expenses(userId, activity, new Date(), price));
-                        lineMessagingClient.replyMessage(new ReplyMessage(replyToken, new TextMessage(Messages.ADD_EXPENDITURE_SUCCESS)));
-                    } catch (Exception ex) {
-                        lineMessagingClient.replyMessage(new ReplyMessage(replyToken, new TextMessage(Messages.SOMETHING_WRONG)));
-                    }
-                } else {
-                    lineMessagingClient.replyMessage(new ReplyMessage(replyToken, new TextMessage(Messages.SHOULD_CORRECT_MODE)));
-                }
+                lineMessagingClient.replyMessage(new ReplyMessage(replyToken, new TextMessage(Messages.SHOULD_CORRECT_MODE)));
                 break;
         }
     }
